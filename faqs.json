@@ -1,0 +1,80 @@
+{
+  "faqs": [
+    {
+      "question": "courses",
+      "answer": "Our college offers B.Tech in CSE, ECE, ME and Civil programs."
+    },
+    {
+      "question": "admission",
+      "answer": "Admissions are based on the state entrance exam followed by centralized counselling. Check the official portal for dates."
+    },
+    {
+      "question": "timetable",
+      "answer": "The timetable is updated every semester and is available on the college website → Academics → Timetable."
+    },
+    {
+      "question": "placements",
+      "answer": "The average placement rate is ~80% with recruiters including Infosys, TCS, Wipro, Accenture, and startups."
+    },
+    {
+      "question": "library",
+      "answer": "Library hours: Mon–Fri 9:00 AM–7:00 PM, Sat 9:00 AM–1:00 PM. Closed on Sundays and holidays."
+    },
+    {
+      "question": "faculty",
+      "answer": "https://vitb.ac.in/wp-content/uploads/2025/07/CSE-FACULTY-DETAILS.pdf"
+    },
+    {
+      "question": "exam schedule",
+      "answer": "Mid-semester and end-semester exam schedules are published by the Exam Cell. Watch the Notices section."
+    },
+    {
+      "question": "hostel",
+      "answer": "Separate hostels for boys and girls with mess facilities. Contact the Hostel Office for vacancy and fee details."
+    },
+    {
+      "question": "scholarship",
+      "answer": "Merit and need-based scholarships are offered. See the Scholarships page for eligibility and deadlines."
+    },
+    {
+      "question": "contact",
+      "answer": "General Helpdesk: +91-XXXXXXXXXX, Email: info@college.edu (replace with official contacts)."
+    },
+    {
+      "question": "college name",
+      "answer": "Vivekananda Institute of Technology."
+    },
+    {
+      "question": "college principal",
+      "answer": "https://vitb.ac.in/?page_id=602"
+    },
+    {
+      "question": "college management committee",
+      "answer": "https://vitb.ac.in/?page_id=1209"
+    },
+    {
+      "question": "about vkit",
+      "answer": "https://vitb.ac.in/?page_id=350"
+    },
+    {
+      "question": "hod or head of the department",
+      "answer": "https://vitb.ac.in/?page_id=4842"
+    },
+    {
+      "question": "What are the canteen timings?",
+      "answer": "The college canteen is open from 8:30 AM to 5:30 PM on working days."
+    },
+    {
+      "question": "What is the admission process?",
+      "answer": "Admissions are based on entrance exam scores and an interview."
+    },
+    {
+      "question": "Where is the library located?",
+      "answer": "The library is in Block B, second floor."
+    },
+    {
+      "question": "What are the hostel fees?",
+      "answer": "Hostel fees are Rs. 60,000 per year including food and maintenance."
+    }
+  ]
+}
