@@ -1,14 +1,16 @@
-# Python
+# Python cache and build output
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
 .Python
 build/
 dist/
 *.egg-info/
-.eggs/
-wheels/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # Virtual environments
 .venv/
@@ -26,3 +28,4 @@ env/
 .idea/
 .vscode/
 *.swp
+*.log

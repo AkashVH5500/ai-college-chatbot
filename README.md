@@ -1,228 +1,121 @@
-# 🎓 College Assistant Chatbot using LLM & FAQ
+# College Assistant Chatbot
 
-An AI-powered College Assistant Chatbot that provides instant responses to students' queries regarding admissions, courses, fees, placements, library, timetable, and other college-related information.
+A local college-information chatbot built with FastAPI, Streamlit and the Gemini API. It retrieves semantically similar entries from a JSON FAQ knowledge base and supplies those entries as context to Gemini when composing a response.
 
-The chatbot first searches a predefined FAQ knowledge base for accurate answers. If no relevant answer is found, it uses a Large Language Model (LLM) to generate a helpful response.
+This repository is an educational prototype. Verify the FAQ content against current official college sources before using it to answer real student questions.
 
----
+## Features
 
-## 🚀 Features
+- FAQ knowledge base stored in faqs.json
+- Semantic FAQ retrieval using Gemini embeddings
+- Gemini-generated responses using retrieved FAQ context
+- FastAPI endpoints for chat and FAQ management
+- Streamlit student chat interface
+- Optional Streamlit admin interface for adding, editing and deleting FAQs
+- Environment-based API key and admin password configuration
 
-* 📚 College FAQ Knowledge Base
-* 🤖 AI-powered responses using LLM
-* 🔍 Semantic search using embeddings
-* 💬 Interactive Streamlit interface
-* ⚡ FastAPI backend
-* 🛡️ Environment variable support using `.env`
-* 📂 Easy-to-update FAQ dataset
+## Stack
 
----
+- Python
+- FastAPI and Uvicorn
+- Streamlit
+- Google Generative AI Python SDK
+- NumPy
+- Requests
+- python-dotenv
 
-## 🏗️ Project Structure
+## Project structure
 
-```text
-.
-├── admin_app.py          # Admin interface
-├── client_app.py         # Streamlit chatbot UI
-├── server.py             # FastAPI backend
-├── faqs.json             # FAQ knowledge base
-├── requirements.txt      # Python dependencies
-├── .env                  # API keys (not included in public repositories)
-├── README.md
-└── venv/
-```
+~~~text
+ai-college-chatbot/
+├── admin_app.py
+├── client_app.py
+├── server.py
+├── faqs.json
+├── requirements.txt
+├── .env.example
+├── .gitignore
+└── README.md
+~~~
 
----
+## Setup
 
-## 🛠️ Technologies Used
+Use Python 3.10 or later.
 
-* Python
-* FastAPI
-* Streamlit
-* OpenAI / Gemini API
-* JSON
-* FAISS / Vector Search (if used)
-* Sentence Embeddings
-* dotenv
+~~~bash
+git clone https://github.com/AkashVH5500/ai-college-chatbot.git
+cd ai-college-chatbot
 
----
+python -m venv .venv
+~~~
 
-## 📋 Prerequisites
+Activate the environment:
 
-* Python 3.10+
-* pip
-* Virtual Environment (recommended)
+- macOS / Linux: source .venv/bin/activate
+- Windows PowerShell: .venv\Scripts\Activate.ps1
 
----
+Install dependencies:
 
-## ⚙️ Installation
-
-### Clone the repository
-
-```bash
-git clone https://github.com/AkashVH5500/<repository-name>.git
-
-cd <repository-name>
-```
-
-### Create Virtual Environment
-
-Windows
-
-```bash
-python -m venv venv
-venv\Scripts\activate
-```
-
-Linux / macOS
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-### Install Dependencies
-
-```bash
+~~~bash
+python -m pip install --upgrade pip
 pip install -r requirements.txt
-```
+~~~
 
----
+Create your local environment file:
 
-## 🔑 Environment Variables
+~~~bash
+cp .env.example .env
+~~~
 
-Create a `.env` file in the project root.
+Edit .env and set your own Gemini API key. Set a strong ADMIN_PASSWORD only if you plan to run the admin interface. Never commit .env.
 
-Example:
+## Run the application
 
-```env
-OPENAI_API_KEY=your_api_key
-```
+Start the backend in terminal 1:
 
-or
-
-```env
-GEMINI_API_KEY=your_api_key
-```
-
----
-
-## ▶️ Run the Backend
-
-```bash
+~~~bash
 uvicorn server:app --reload
-```
+~~~
 
-Backend URL:
+The API is available at http://127.0.0.1:8000; interactive API documentation is at http://127.0.0.1:8000/docs.
 
-```
-http://127.0.0.1:8000
-```
+Start the student interface in terminal 2:
 
----
-
-## ▶️ Run the Chatbot
-
-```bash
+~~~bash
 streamlit run client_app.py
-```
+~~~
 
-The Streamlit application will open automatically in your browser.
+Start the admin interface in a separate terminal only after setting ADMIN_PASSWORD:
 
----
+~~~bash
+streamlit run admin_app.py
+~~~
 
-## 📂 FAQ Dataset
+## API endpoints
 
-The chatbot reads data from:
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| GET | /health | Basic service health |
+| GET | /faqs | List FAQ entries |
+| POST | /faqs | Add an FAQ |
+| PUT | /faqs/{faq_id} | Update an FAQ |
+| DELETE | /faqs/{faq_id} | Delete an FAQ |
+| POST | /chat | Retrieve FAQ context and generate a response |
 
-```text
-faqs.json
-```
+## FAQ data
 
-You can add new categories and questions by editing this file.
+The knowledge base is stored in faqs.json as a JSON object containing a faqs array. Each entry has a question and answer. The API assigns an ID when loading entries that do not already have one.
 
-Example:
+Keep this content accurate and current. Replace sample or placeholder contact details, fees, placement statistics and schedules with verified official information before sharing the chatbot with students.
 
-```json
-{
-  "admission": [
-    {
-      "question": "What is the admission process?",
-      "answer": "Admissions are based on..."
-    }
-  ]
-}
-```
+## Design notes and limitations
 
----
+- FAQ entries and embeddings are held in process memory; this is a small local prototype, not a multi-user production service.
+- Gemini is called for embeddings and response generation, so an API key and network connection are required.
+- The admin password is a basic local safeguard, not a substitute for production authentication, authorisation, rate limiting or audit logging.
+- Review generated responses against official college information. Do not treat model output as an authoritative college announcement.
+- The current CORS and local service configuration should be reviewed before any public deployment.
 
-## 📸 Screenshots
+## Author
 
-Add screenshots of:
-
-* Home Page
-* Chat Interface
-* Admin Dashboard
-
-Example:
-
-```text
-images/chatbot.png
-images/admin.png
-```
-
----
-
-## Future Improvements
-
-* Student Login
-* Voice Assistant
-* Multi-language Support
-* PDF Document Search
-* Database Integration
-* RAG (Retrieval-Augmented Generation)
-* Chat History
-* Authentication
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome!
-
-1. Fork the repository
-2. Create a feature branch
-
-```bash
-git checkout -b feature-name
-```
-
-3. Commit changes
-
-```bash
-git commit -m "Added new feature"
-```
-
-4. Push to GitHub
-
-```bash
-git push origin feature-name
-```
-
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-This project is intended for educational and learning purposes.
-
----
-
-## 👨‍💻 Author
-
-**Akash V Hiremath**
-
-* GitHub: https://github.com/AkashVH5500
-
----
+Akash V Hiremath — [GitHub](https://github.com/AkashVH5500)
