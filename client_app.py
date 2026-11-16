@@ -1,7 +1,13 @@
+import os
+from pathlib import Path
+
 import requests
 import streamlit as st
+from dotenv import load_dotenv
 
-BACKEND_URL = "http://127.0.0.1:8000"
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 
 st.set_page_config(page_title="College Assistant Chatbot", layout="centered")
 st.title("College Assistant Chatbot")
