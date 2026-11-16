@@ -67,7 +67,7 @@ Create your local environment file:
 cp .env.example .env
 ~~~
 
-Edit .env and set your own Gemini API key. Set a strong ADMIN_PASSWORD only if you plan to run the admin interface. Never commit .env.
+Edit .env and set your own GEMINI_API_KEY. For the admin interface, also set a strong ADMIN_PASSWORD and a separate random ADMIN_API_TOKEN. Keep these server-side; never commit .env. The model variables can be left at the documented defaults or changed to model IDs currently available to your Google AI project.
 
 ## Run the application
 
@@ -85,7 +85,7 @@ Start the student interface in terminal 2:
 streamlit run client_app.py
 ~~~
 
-Start the admin interface in a separate terminal only after setting ADMIN_PASSWORD:
+Start the admin interface in a separate terminal after setting both ADMIN_PASSWORD and ADMIN_API_TOKEN:
 
 ~~~bash
 streamlit run admin_app.py
@@ -124,6 +124,6 @@ Akash V Hiremath — [GitHub](https://github.com/AkashVH5500)
 ## Security notes
 
 - The Gemini integration uses the supported Google GenAI Python SDK (`google-genai`) and the current stable model identifiers configured through environment variables. Google marks the previous `google-generativeai` Python package as deprecated and recommends migrating to `google-genai`. See the [official migration guide](https://ai.google.dev/gemini-api/docs/migrate).
-- FAQ create, update and delete endpoints require an `Authorization: Bearer` token configured as `ADMIN_API_TOKEN`. The Streamlit admin interface reads the token from the server-side `.env`; it is not sent to the student interface.
+- FAQ create, update and delete endpoints require an `Authorization: Bearer` token configured as `ADMIN_API_TOKEN`. The Streamlit admin interface reads the token from the server-side `.env`; it is not sent to the student interface. Public GET endpoints are read-only.
 - The separate `ADMIN_PASSWORD` only gates the local Streamlit admin screen. Do not deploy this prototype publicly without stronger authentication, HTTPS, rate limiting, audit logs and protected secret storage.
 - The FAQ dataset contains sample content. Placement statistics, contact details and hostel fees are intentionally not stated as verified facts; confirm all college information through official channels.
