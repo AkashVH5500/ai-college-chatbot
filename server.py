@@ -159,8 +159,32 @@ def embed_text(text: str) -> np.ndarray:
 
 
 def rebuild_embeddings() -> None:
+    """Embed all FAQ questions in one provider request."""
     global faq_embeddings
-    faq_embeddings = [embed_text(item.question) for item in faq_list]
+
+    if not faq_list:
+        faq_embeddings = []
+        return
+
+    response = client.models.embed_content(
+        model=EMBED_MODEL,
+        contents=[item.question for item in faq_list],
+        config=types.EmbedContentConfig(
+            task_type="SEMANTIC_SIMILARITY",
+            output_dimensionality=EMBEDDING_DIMENSIONS,
+        ),
+    )
+
+    if not response.embeddings or len(response.embeddings) != len(faq_list):
+        raise RuntimeError("The embedding provider returned an unexpected number of FAQ embeddings.")
+
+    faq_embeddings = [
+        np.asarray(item.values, dtype=np.float32)
+        for item in response.embeddings
+    ]
+
+    if any(vector.size == 0 for vector in faq_embeddings):
+        raise RuntimeError("The embedding provider returned an empty FAQ embedding.")
 
 
 def semantic_search(query: str, top_k: int = 3, threshold: float = 0.60) -> List[FAQItem]:
