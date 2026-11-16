@@ -119,3 +119,11 @@ Keep this content accurate and current. Replace sample or placeholder contact de
 ## Author
 
 Akash V Hiremath — [GitHub](https://github.com/AkashVH5500)
+
+
+## Security notes
+
+- The Gemini integration uses the supported Google GenAI Python SDK (`google-genai`) and the current stable model identifiers configured through environment variables. Google marks the previous `google-generativeai` Python package as deprecated and recommends migrating to `google-genai`. See the [official migration guide](https://ai.google.dev/gemini-api/docs/migrate).
+- FAQ create, update and delete endpoints require an `Authorization: Bearer` token configured as `ADMIN_API_TOKEN`. The Streamlit admin interface reads the token from the server-side `.env`; it is not sent to the student interface.
+- The separate `ADMIN_PASSWORD` only gates the local Streamlit admin screen. Do not deploy this prototype publicly without stronger authentication, HTTPS, rate limiting, audit logs and protected secret storage.
+- The FAQ dataset contains sample content. Placement statistics, contact details and hostel fees are intentionally not stated as verified facts; confirm all college information through official channels.
