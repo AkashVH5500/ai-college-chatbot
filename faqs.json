@@ -6,11 +6,11 @@
     },
     {
       "question": "admission",
-      "answer": "Admissions are based on the state entrance exam followed by centralized counselling. Check the official portal for dates."
+      "answer": "Admission routes, eligibility and counselling requirements vary by programme and entry category. Check the official college website or contact the Admissions Office for current criteria and dates."
     },
     {
       "question": "timetable",
-      "answer": "The timetable is updated every semester and is available on the college website → Academics → Timetable."
+      "answer": "Academic timetables are published by the college and can change during a semester. Check the official website or department notice board for the current timetable."
     },
     {
       "question": "placements",
@@ -18,7 +18,7 @@
     },
     {
       "question": "library",
-      "answer": "Library hours: Mon–Fri 9:00 AM–7:00 PM, Sat 9:00 AM–1:00 PM. Closed on Sundays and holidays."
+      "answer": "Please confirm the current library opening hours and holiday schedule with the college Library Office. This demo FAQ dataset does not contain verified current timings."
     },
     {
       "question": "faculty",
@@ -30,11 +30,11 @@
     },
     {
       "question": "hostel",
-      "answer": "Separate hostels for boys and girls with mess facilities. Contact the Hostel Office for vacancy and fee details."
+      "answer": "Please contact the college Hostel Office for current accommodation availability, facilities and fee information. This demo FAQ dataset does not contain a verified current hostel policy."
     },
     {
       "question": "scholarship",
-      "answer": "Merit and need-based scholarships are offered. See the Scholarships page for eligibility and deadlines."
+      "answer": "Scholarship schemes, eligibility and deadlines depend on the current academic year and applicable scheme. Check official college notices and the relevant government scholarship portal for current information."
     },
     {
       "question": "contact",
@@ -62,15 +62,15 @@
     },
     {
       "question": "What are the canteen timings?",
-      "answer": "The college canteen is open from 8:30 AM to 5:30 PM on working days."
+      "answer": "Please confirm current canteen timings with the college administration. This demo FAQ dataset does not contain verified current timings."
     },
     {
       "question": "What is the admission process?",
-      "answer": "Admissions are based on entrance exam scores and an interview."
+      "answer": "Admission requirements depend on the programme and admission route. Please check the official college website or contact the Admissions Office for the current process."
     },
     {
       "question": "Where is the library located?",
-      "answer": "The library is in Block B, second floor."
+      "answer": "Please check the college campus directory or contact the Library Office for its current location."
     },
     {
       "question": "What are the hostel fees?",
