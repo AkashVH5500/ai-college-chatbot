@@ -14,7 +14,7 @@
     },
     {
       "question": "placements",
-      "answer": "The average placement rate is ~80% with recruiters including Infosys, TCS, Wipro, Accenture, and startups."
+      "answer": "For current placement statistics, recruiters and placement updates, please contact the college Placement Cell or check the official college website. This demo FAQ dataset does not contain verified current placement figures."
     },
     {
       "question": "library",
@@ -38,7 +38,7 @@
     },
     {
       "question": "contact",
-      "answer": "General Helpdesk: +91-XXXXXXXXXX, Email: info@college.edu (replace with official contacts)."
+      "answer": "Please use the contact information published on the official Vivekananda Institute of Technology website. This demo FAQ dataset does not contain a verified helpdesk phone number or email address."
     },
     {
       "question": "college name",
@@ -74,7 +74,7 @@
     },
     {
       "question": "What are the hostel fees?",
-      "answer": "Hostel fees are Rs. 60,000 per year including food and maintenance."
+      "answer": "Hostel fees and inclusions can change by academic year. Please contact the college Hostel Office for the current fee structure; this demo FAQ dataset does not contain a verified current fee."
     }
   ]
 }
