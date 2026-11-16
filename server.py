@@ -1,15 +1,18 @@
 """FastAPI backend for a Gemini-powered college FAQ assistant."""
 
 import json
+import logging
 import os
+import secrets
 from pathlib import Path
 from typing import List
 
 import numpy as np
-import google.generativeai as genai
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from google import genai
+from google.genai import types
 from pydantic import BaseModel
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -17,13 +20,17 @@ FAQ_FILE = BASE_DIR / "faqs.json"
 
 load_dotenv(BASE_DIR / ".env")
 API_KEY = os.getenv("GEMINI_API_KEY")
+ADMIN_API_TOKEN = os.getenv("ADMIN_API_TOKEN")
+
 if not API_KEY:
     raise RuntimeError("GEMINI_API_KEY is not set. Create a local .env from .env.example.")
 
-genai.configure(api_key=API_KEY)
+client = genai.Client(api_key=API_KEY)
+logger = logging.getLogger(__name__)
 
-CHAT_MODEL = "models/gemini-1.5-flash-latest"
-EMBED_MODEL = "models/text-embedding-004"
+CHAT_MODEL = os.getenv("GEMINI_CHAT_MODEL", "gemini-3.6-flash")
+EMBED_MODEL = os.getenv("GEMINI_EMBED_MODEL", "gemini-embedding-001")
+EMBEDDING_DIMENSIONS = 768
 
 
 class FAQPayload(BaseModel):
@@ -50,7 +57,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:8501", "http://127.0.0.1:8501"],
     allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 faq_list: List[FAQItem] = []
@@ -63,8 +70,29 @@ def faq_to_dict(item: FAQItem) -> dict:
     return item.dict()
 
 
+def require_admin(authorization: str | None = Header(default=None)) -> None:
+    """Protect FAQ mutations with a server-side bearer token."""
+    if not ADMIN_API_TOKEN:
+        raise HTTPException(
+            status_code=503,
+            detail="FAQ administration is disabled until ADMIN_API_TOKEN is configured.",
+        )
+
+    scheme, separator, token = (authorization or "").partition(" ")
+    if (
+        not separator
+        or scheme.lower() != "bearer"
+        or not secrets.compare_digest(token, ADMIN_API_TOKEN)
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Valid administrator credentials are required.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
 def load_faqs() -> None:
-    """Load FAQs from disk and assign stable IDs to entries without one."""
+    """Load FAQs and assign stable in-memory IDs to entries without one."""
     global faq_list
 
     if not FAQ_FILE.exists():
@@ -84,6 +112,7 @@ def load_faqs() -> None:
     for row in rows:
         if not isinstance(row, dict):
             continue
+
         question = str(row.get("question", "")).strip()
         answer = str(row.get("answer", "")).strip()
         if not question or not answer:
@@ -106,12 +135,27 @@ def load_faqs() -> None:
 
 def save_faqs() -> None:
     payload = {"faqs": [faq_to_dict(item) for item in faq_list]}
-    FAQ_FILE.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    FAQ_FILE.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
 
 
 def embed_text(text: str) -> np.ndarray:
-    response = genai.embed_content(model=EMBED_MODEL, content=text)
-    return np.asarray(response["embedding"], dtype=np.float32)
+    """Create a semantic-similarity embedding using the supported Google GenAI SDK."""
+    response = client.models.embed_content(
+        model=EMBED_MODEL,
+        contents=text,
+        config=types.EmbedContentConfig(
+            task_type="SEMANTIC_SIMILARITY",
+            output_dimensionality=EMBEDDING_DIMENSIONS,
+        ),
+    )
+
+    if not response.embeddings or not response.embeddings[0].values:
+        raise RuntimeError("The embedding provider returned an empty embedding.")
+
+    return np.asarray(response.embeddings[0].values, dtype=np.float32)
 
 
 def rebuild_embeddings() -> None:
@@ -133,6 +177,7 @@ def semantic_search(query: str, top_k: int = 3, threshold: float = 0.60) -> List
         denominator = float(np.linalg.norm(query_embedding) * np.linalg.norm(embedding))
         if denominator == 0:
             continue
+
         score = float(np.dot(query_embedding, embedding) / denominator)
         if score >= threshold:
             scored.append((faq, score))
@@ -145,7 +190,11 @@ def semantic_search(query: str, top_k: int = 3, threshold: float = 0.60) -> List
 def startup() -> None:
     load_faqs()
     if faq_list:
-        rebuild_embeddings()
+        try:
+            rebuild_embeddings()
+        except Exception as exc:
+            logger.exception("Unable to build FAQ embeddings during startup")
+            raise RuntimeError("Could not initialize FAQ embeddings. Check the Gemini API configuration.") from exc
 
 
 @app.get("/health")
@@ -158,14 +207,19 @@ def get_all_faqs():
     return faq_list
 
 
-@app.post("/faqs", response_model=FAQItem)
+@app.post("/faqs", response_model=FAQItem, dependencies=[Depends(require_admin)])
 def add_faq(payload: FAQPayload):
     question = payload.question.strip()
     answer = payload.answer.strip()
     if not question or not answer:
         raise HTTPException(status_code=400, detail="Question and answer are required.")
 
-    embedding = embed_text(question)
+    try:
+        embedding = embed_text(question)
+    except Exception as exc:
+        logger.exception("FAQ embedding failed")
+        raise HTTPException(status_code=503, detail="FAQ embedding service is unavailable.") from exc
+
     new_id = max((item.id for item in faq_list), default=0) + 1
     item = FAQItem(id=new_id, question=question, answer=answer)
     faq_list.append(item)
@@ -174,7 +228,7 @@ def add_faq(payload: FAQPayload):
     return item
 
 
-@app.put("/faqs/{faq_id}", response_model=FAQItem)
+@app.put("/faqs/{faq_id}", response_model=FAQItem, dependencies=[Depends(require_admin)])
 def update_faq(faq_id: int, payload: FAQPayload):
     question = payload.question.strip()
     answer = payload.answer.strip()
@@ -183,7 +237,12 @@ def update_faq(faq_id: int, payload: FAQPayload):
 
     for index, current in enumerate(faq_list):
         if current.id == faq_id:
-            embedding = embed_text(question)
+            try:
+                embedding = embed_text(question)
+            except Exception as exc:
+                logger.exception("FAQ embedding failed")
+                raise HTTPException(status_code=503, detail="FAQ embedding service is unavailable.") from exc
+
             updated = FAQItem(id=faq_id, question=question, answer=answer)
             faq_list[index] = updated
             if index < len(faq_embeddings):
@@ -196,7 +255,7 @@ def update_faq(faq_id: int, payload: FAQPayload):
     raise HTTPException(status_code=404, detail="FAQ not found.")
 
 
-@app.delete("/faqs/{faq_id}")
+@app.delete("/faqs/{faq_id}", dependencies=[Depends(require_admin)])
 def delete_faq(faq_id: int):
     for index, current in enumerate(faq_list):
         if current.id == faq_id:
@@ -217,21 +276,31 @@ def chat(request: ChatRequest):
     if not question:
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
-    matches = semantic_search(question)
-    faq_context = "\n\n".join(
-        f"Q: {item.question}\nA: {item.answer}" for item in matches
-    ) or "No matching FAQ was found."
+    try:
+        matches = semantic_search(question)
+        faq_context = "\n\n".join(
+            f"Q: {item.question}\nA: {item.answer}" for item in matches
+        ) or "No matching FAQ was found."
 
-    model = genai.GenerativeModel(CHAT_MODEL)
-    response = model.generate_content(
-        "Answer the student's question using the college FAQ context below. "
-        "Do not invent official dates, fees, contacts or policies. "
-        "When the context does not contain the answer, say that the student "
-        "should verify it with the college office.\n\n"
-        f"Student question: {question}\n\nFAQ context:\n{faq_context}"
-    )
+        prompt = (
+            "Answer the student's question using only the college FAQ context below. "
+            "Do not invent official dates, fees, contacts, placement statistics or policies. "
+            "When the context does not contain the answer, say that the student should "
+            "verify it with the college office or official website.\n\n"
+            f"Student question: {question}\n\nFAQ context:\n{faq_context}"
+        )
+        response = client.models.generate_content(
+            model=CHAT_MODEL,
+            contents=prompt,
+        )
+    except Exception as exc:
+        logger.exception("Gemini request failed")
+        raise HTTPException(
+            status_code=503,
+            detail="The Gemini service is temporarily unavailable. Please try again.",
+        ) from exc
 
     answer = getattr(response, "text", None) or (
-        "The AI provider did not return a text response. Please try again."
+        "The AI provider did not return a text response. Please verify this information with the college office."
     )
     return ChatResponse(answer=answer, top_faqs=matches)
