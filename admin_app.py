@@ -10,12 +10,14 @@ load_dotenv(BASE_DIR / ".env")
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+ADMIN_API_TOKEN = os.getenv("ADMIN_API_TOKEN")
+ADMIN_HEADERS = {"Authorization": f"Bearer {ADMIN_API_TOKEN}"} if ADMIN_API_TOKEN else {}
 
 st.set_page_config(page_title="College Chatbot - Admin", layout="wide")
 st.title("Admin Dashboard - FAQ Manager")
 
-if not ADMIN_PASSWORD:
-    st.error("Set ADMIN_PASSWORD in your local .env file before launching the admin interface.")
+if not ADMIN_PASSWORD or not ADMIN_API_TOKEN:
+    st.error("Set both ADMIN_PASSWORD and ADMIN_API_TOKEN in your local .env file before launching the admin interface.")
     st.stop()
 
 password = st.text_input("Admin password", type="password")
@@ -24,7 +26,7 @@ if password != ADMIN_PASSWORD:
     st.stop()
 
 st.success("Authenticated for this local demo.")
-st.caption("This password check is intended for local development only; it is not production authentication.")
+st.caption("This is a local-development safeguard, not enterprise identity or production-grade access management.")
 
 try:
     response = requests.get(f"{BACKEND_URL}/faqs", timeout=10)
@@ -58,6 +60,7 @@ for faq in faqs:
                     updated = requests.put(
                         f"{BACKEND_URL}/faqs/{faq['id']}",
                         json={"question": new_question, "answer": new_answer},
+                        headers=ADMIN_HEADERS,
                         timeout=20,
                     )
                     updated.raise_for_status()
@@ -71,6 +74,7 @@ for faq in faqs:
                 try:
                     deleted = requests.delete(
                         f"{BACKEND_URL}/faqs/{faq['id']}",
+                        headers=ADMIN_HEADERS,
                         timeout=20,
                     )
                     deleted.raise_for_status()
@@ -94,6 +98,7 @@ if submitted:
             added = requests.post(
                 f"{BACKEND_URL}/faqs",
                 json={"question": question, "answer": answer},
+                headers=ADMIN_HEADERS,
                 timeout=20,
             )
             added.raise_for_status()
