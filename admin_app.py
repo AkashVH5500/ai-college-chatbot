@@ -1,106 +1,108 @@
-# admin_app.py
 import os
+from pathlib import Path
+
 import requests
 import streamlit as st
+from dotenv import load_dotenv
 
-BACKEND_URL = "http://127.0.0.1:8000"
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
+
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+ADMIN_API_TOKEN = os.getenv("ADMIN_API_TOKEN")
+ADMIN_HEADERS = {"Authorization": f"Bearer {ADMIN_API_TOKEN}"} if ADMIN_API_TOKEN else {}
 
 st.set_page_config(page_title="College Chatbot - Admin", layout="wide")
-st.title("🛠 Admin Dashboard – FAQ Manager")
+st.title("Admin Dashboard - FAQ Manager")
 
-# Simple password auth (developer/admin only)
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")  # change in env!
+if not ADMIN_PASSWORD or not ADMIN_API_TOKEN:
+    st.error("Set both ADMIN_PASSWORD and ADMIN_API_TOKEN in your local .env file before launching the admin interface.")
+    st.stop()
 
-password = st.text_input("Enter admin password", type="password")
+password = st.text_input("Admin password", type="password")
 if password != ADMIN_PASSWORD:
-    st.warning("Enter correct admin password to continue.")
+    st.warning("Enter the configured admin password to continue.")
     st.stop()
 
-st.success("Authenticated as admin.")
+st.success("Authenticated for this local demo.")
+st.caption("This is a local-development safeguard, not enterprise identity or production-grade access management.")
 
-st.divider()
-st.header("📚 FAQ List")
-
-# Fetch FAQs
 try:
-    resp = requests.get(f"{BACKEND_URL}/faqs", timeout=10)
-    resp.raise_for_status()
-    faqs = resp.json()
-except Exception as e:
-    st.error(f"Error loading FAQs from server: {e}")
+    response = requests.get(f"{BACKEND_URL}/faqs", timeout=10)
+    response.raise_for_status()
+    faqs = response.json()
+except requests.RequestException as exc:
+    st.error(f"Could not load FAQs: {exc}")
     st.stop()
 
-# Display FAQs in table
-if faqs:
-    for faq in faqs:
-        with st.expander(f"#{faq['id']} – {faq['question'][:80]}"):
-            st.write("**Question:**", faq["question"])
-            st.write("**Answer:**", faq["answer"])
+st.header("Existing FAQs")
+if not faqs:
+    st.info("No FAQs are available yet.")
 
-            col1, col2 = st.columns(2)
+for faq in faqs:
+    with st.expander(f"#{faq['id']} - {faq['question'][:80]}"):
+        new_question = st.text_input(
+            "Question",
+            value=faq["question"],
+            key=f"question-{faq['id']}",
+        )
+        new_answer = st.text_area(
+            "Answer",
+            value=faq["answer"],
+            key=f"answer-{faq['id']}",
+        )
 
-            # Edit form
-            with col1:
-                st.subheader("Edit FAQ")
-                new_q = st.text_input(
-                    f"Edit Question (ID {faq['id']})",
-                    value=faq["question"],
-                    key=f"edit_q_{faq['id']}",
-                )
-                new_a = st.text_area(
-                    f"Edit Answer (ID {faq['id']})",
-                    value=faq["answer"],
-                    key=f"edit_a_{faq['id']}",
-                )
-                if st.button(f"💾 Save (ID {faq['id']})", key=f"save_{faq['id']}"):
-                    try:
-                        up_resp = requests.put(
-                            f"{BACKEND_URL}/faqs/{faq['id']}",
-                            json={"question": new_q, "answer": new_a},
-                            timeout=10,
-                        )
-                        up_resp.raise_for_status()
-                        st.success("FAQ updated.")
-                        st.experimental_rerun()
-                    except Exception as e:
-                        st.error(f"Update failed: {e}")
+        col_update, col_delete = st.columns(2)
+        with col_update:
+            if st.button("Save changes", key=f"save-{faq['id']}"):
+                try:
+                    updated = requests.put(
+                        f"{BACKEND_URL}/faqs/{faq['id']}",
+                        json={"question": new_question, "answer": new_answer},
+                        headers=ADMIN_HEADERS,
+                        timeout=20,
+                    )
+                    updated.raise_for_status()
+                    st.success("FAQ updated.")
+                    st.rerun()
+                except requests.RequestException as exc:
+                    st.error(f"Update failed: {exc}")
 
-            # Delete button
-            with col2:
-                st.subheader("Delete FAQ")
-                if st.button(f"🗑 Delete (ID {faq['id']})", key=f"delete_{faq['id']}"):
-                    try:
-                        del_resp = requests.delete(
-                            f"{BACKEND_URL}/faqs/{faq['id']}", timeout=10
-                        )
-                        del_resp.raise_for_status()
-                        st.success("FAQ deleted.")
-                        st.experimental_rerun()
-                    except Exception as e:
-                        st.error(f"Delete failed: {e}")
-else:
-    st.info("No FAQs available yet.")
+        with col_delete:
+            if st.button("Delete FAQ", key=f"delete-{faq['id']}"):
+                try:
+                    deleted = requests.delete(
+                        f"{BACKEND_URL}/faqs/{faq['id']}",
+                        headers=ADMIN_HEADERS,
+                        timeout=20,
+                    )
+                    deleted.raise_for_status()
+                    st.success("FAQ deleted.")
+                    st.rerun()
+                except requests.RequestException as exc:
+                    st.error(f"Delete failed: {exc}")
 
 st.divider()
-st.header("➕ Add New FAQ")
-
-with st.form("add_faq_form"):
-    q_new = st.text_input("Question")
-    a_new = st.text_area("Answer")
+st.header("Add FAQ")
+with st.form("add-faq"):
+    question = st.text_input("Question")
+    answer = st.text_area("Answer")
     submitted = st.form_submit_button("Add FAQ")
 
-    if submitted:
-        if not q_new.strip() or not a_new.strip():
-            st.error("Question and Answer cannot be empty.")
-        else:
-            try:
-                add_resp = requests.post(
-                    f"{BACKEND_URL}/faqs",
-                    json={"question": q_new, "answer": a_new},
-                    timeout=10,
-                )
-                add_resp.raise_for_status()
-                st.success("FAQ added successfully.")
-                st.experimental_rerun()
-            except Exception as e:
-                st.error(f"Failed to add FAQ: {e}")
+if submitted:
+    if not question.strip() or not answer.strip():
+        st.error("Both question and answer are required.")
+    else:
+        try:
+            added = requests.post(
+                f"{BACKEND_URL}/faqs",
+                json={"question": question, "answer": answer},
+                headers=ADMIN_HEADERS,
+                timeout=20,
+            )
+            added.raise_for_status()
+            st.success("FAQ added.")
+            st.rerun()
+        except requests.RequestException as exc:
+            st.error(f"Could not add FAQ: {exc}")

@@ -1,198 +1,330 @@
-"""
-FastAPI backend for College Chatbot (Gemini API Version)
-- FAQ storage (faqs.json)
-- Embeddings (Gemini)
-- Semantic search
-- Chat with FAQ context
-"""
+"""FastAPI backend for a Gemini-powered college FAQ assistant."""
 
-import os
 import json
+import logging
+import os
+import secrets
+from pathlib import Path
 from typing import List
-import numpy as np
 
-from fastapi import FastAPI, HTTPException
+import numpy as np
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from google import genai
+from google.genai import types
 from pydantic import BaseModel
 
-# -----------------------------
-# Gemini library
-# -----------------------------
-import google.generativeai as genai
+BASE_DIR = Path(__file__).resolve().parent
+FAQ_FILE = BASE_DIR / "faqs.json"
 
-# -----------------------------
-# Load environment
-# -----------------------------
-from dotenv import load_dotenv
-import pathlib
-
-env_path = pathlib.Path(__file__).parent / ".env"
-load_dotenv(env_path)
-
+load_dotenv(BASE_DIR / ".env")
 API_KEY = os.getenv("GEMINI_API_KEY")
+ADMIN_API_TOKEN = os.getenv("ADMIN_API_TOKEN")
+
 if not API_KEY:
-    raise RuntimeError("GEMINI_API_KEY not found in .env")
+    raise RuntimeError("GEMINI_API_KEY is not set. Create a local .env from .env.example.")
 
-genai.configure(api_key=API_KEY)
+client = genai.Client(api_key=API_KEY)
+logger = logging.getLogger(__name__)
 
-# -----------------------------
-# Gemini Models
-# -----------------------------
-CHAT_MODEL = "models/gemini-1.5-flash-latest"  # Fixed format
-EMBED_MODEL = "models/text-embedding-004"      # Already correct
+CHAT_MODEL = os.getenv("GEMINI_CHAT_MODEL", "gemini-3.6-flash")
+EMBED_MODEL = os.getenv("GEMINI_EMBED_MODEL", "gemini-embedding-001")
+EMBEDDING_DIMENSIONS = 768
 
-# -----------------------------
-# File path
-# -----------------------------
-FAQ_FILE = "faqs.json"
 
-# -----------------------------
-# FastAPI App
-# -----------------------------
-app = FastAPI(title="College Chatbot Backend (Gemini Edition)")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# -----------------------------
-# Pydantic Models
-# -----------------------------
-class FAQItem(BaseModel):
+class FAQPayload(BaseModel):
     question: str
     answer: str
 
-class FAQWithScore(FAQItem):
-    score: float
+
+class FAQItem(FAQPayload):
+    id: int
+
 
 class ChatRequest(BaseModel):
     question: str
 
+
 class ChatResponse(BaseModel):
     answer: str
-    top_faqs: List[FAQWithScore]
+    top_faqs: List[FAQItem]
 
 
-# -----------------------------
-# In-memory storage
-# -----------------------------
+app = FastAPI(title="College Assistant Chatbot API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8501", "http://127.0.0.1:8501"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
 faq_list: List[FAQItem] = []
 faq_embeddings: List[np.ndarray] = []
 
-# -----------------------------
-# File Functions
-# -----------------------------
-def load_faqs():
+
+def faq_to_dict(item: FAQItem) -> dict:
+    if hasattr(item, "model_dump"):
+        return item.model_dump()
+    return item.dict()
+
+
+def require_admin(authorization: str | None = Header(default=None)) -> None:
+    """Protect FAQ mutations with a server-side bearer token."""
+    if not ADMIN_API_TOKEN:
+        raise HTTPException(
+            status_code=503,
+            detail="FAQ administration is disabled until ADMIN_API_TOKEN is configured.",
+        )
+
+    scheme, separator, token = (authorization or "").partition(" ")
+    if (
+        not separator
+        or scheme.lower() != "bearer"
+        or not secrets.compare_digest(token, ADMIN_API_TOKEN)
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Valid administrator credentials are required.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+def load_faqs() -> None:
+    """Load FAQs and assign stable in-memory IDs to entries without one."""
     global faq_list
 
-    if not os.path.exists(FAQ_FILE):
-        with open(FAQ_FILE, "w") as f:
-            json.dump({"faqs": []}, f, indent=2)
+    if not FAQ_FILE.exists():
+        FAQ_FILE.write_text(json.dumps({"faqs": []}, indent=2), encoding="utf-8")
         faq_list = []
         return
 
-    with open(FAQ_FILE, "r") as f:
-        data = json.load(f)
+    data = json.loads(FAQ_FILE.read_text(encoding="utf-8"))
+    rows = data.get("faqs", [])
+    if not isinstance(rows, list):
+        raise ValueError("faqs.json must contain a 'faqs' array.")
 
-    faq_list = [FAQItem(**x) for x in data.get("faqs", [])]
+    loaded: List[FAQItem] = []
+    used_ids = set()
+    next_id = 1
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+
+        question = str(row.get("question", "")).strip()
+        answer = str(row.get("answer", "")).strip()
+        if not question or not answer:
+            continue
+
+        try:
+            faq_id = int(row.get("id", next_id))
+        except (TypeError, ValueError):
+            faq_id = next_id
+
+        while faq_id in used_ids:
+            faq_id += 1
+
+        loaded.append(FAQItem(id=faq_id, question=question, answer=answer))
+        used_ids.add(faq_id)
+        next_id = max(next_id, faq_id + 1)
+
+    faq_list = loaded
 
 
-def save_faqs():
-    with open(FAQ_FILE, "w") as f:
-        json.dump({"faqs": [f.model_dump() for f in faq_list]}, f, indent=2)
-
-
-# -----------------------------
-# Embeddings
-# -----------------------------
-def embed_text(text: str) -> np.ndarray:
-    """Generate embeddings using Gemini."""
-    res = genai.embed_content(
-        model=EMBED_MODEL,
-        content=text
+def save_faqs() -> None:
+    payload = {"faqs": [faq_to_dict(item) for item in faq_list]}
+    FAQ_FILE.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False),
+        encoding="utf-8",
     )
-    return np.array(res["embedding"], dtype="float32")
 
 
-def rebuild_embeddings():
+def embed_text(text: str) -> np.ndarray:
+    """Create a semantic-similarity embedding using the supported Google GenAI SDK."""
+    response = client.models.embed_content(
+        model=EMBED_MODEL,
+        contents=text,
+        config=types.EmbedContentConfig(
+            task_type="SEMANTIC_SIMILARITY",
+            output_dimensionality=EMBEDDING_DIMENSIONS,
+        ),
+    )
+
+    if not response.embeddings or not response.embeddings[0].values:
+        raise RuntimeError("The embedding provider returned an empty embedding.")
+
+    return np.asarray(response.embeddings[0].values, dtype=np.float32)
+
+
+def rebuild_embeddings() -> None:
+    """Embed all FAQ questions in one provider request."""
     global faq_embeddings
-    faq_embeddings = [embed_text(f.question) for f in faq_list]
+
+    if not faq_list:
+        faq_embeddings = []
+        return
+
+    response = client.models.embed_content(
+        model=EMBED_MODEL,
+        contents=[item.question for item in faq_list],
+        config=types.EmbedContentConfig(
+            task_type="SEMANTIC_SIMILARITY",
+            output_dimensionality=EMBEDDING_DIMENSIONS,
+        ),
+    )
+
+    if not response.embeddings or len(response.embeddings) != len(faq_list):
+        raise RuntimeError("The embedding provider returned an unexpected number of FAQ embeddings.")
+
+    faq_embeddings = [
+        np.asarray(item.values, dtype=np.float32)
+        for item in response.embeddings
+    ]
+
+    if any(vector.size == 0 for vector in faq_embeddings):
+        raise RuntimeError("The embedding provider returned an empty FAQ embedding.")
 
 
-# -----------------------------
-# Semantic Search
-# -----------------------------
-def semantic_search(query: str, top_k: int = 3, threshold: float = 0.60):
+def semantic_search(query: str, top_k: int = 3, threshold: float = 0.60) -> List[FAQItem]:
     if not faq_list:
         return []
 
-    q_emb = embed_text(query)
-
-    scored = []
-    for faq, emb in zip(faq_list, faq_embeddings):
-        score = float(np.dot(q_emb, emb) / (np.linalg.norm(q_emb) * np.linalg.norm(emb)))
-        scored.append((faq, score))
-
-    scored.sort(key=lambda x: x[1], reverse=True)
-
-    matches = [
-        FAQWithScore(question=f.question, answer=f.answer, score=s)
-        for f, s in scored[:top_k]
-        if s >= threshold
-    ]
-
-    return matches
-
-
-# -----------------------------
-# Startup
-# -----------------------------
-@app.on_event("startup")
-def startup():
-    load_faqs()
-    if faq_list:
+    if len(faq_embeddings) != len(faq_list):
         rebuild_embeddings()
 
+    query_embedding = embed_text(query)
+    scored = []
 
-# -----------------------------
-# Routes
-# -----------------------------
+    for faq, embedding in zip(faq_list, faq_embeddings):
+        denominator = float(np.linalg.norm(query_embedding) * np.linalg.norm(embedding))
+        if denominator == 0:
+            continue
+
+        score = float(np.dot(query_embedding, embedding) / denominator)
+        if score >= threshold:
+            scored.append((faq, score))
+
+    scored.sort(key=lambda row: row[1], reverse=True)
+    return [faq for faq, _ in scored[:top_k]]
+
+
+@app.on_event("startup")
+def startup() -> None:
+    load_faqs()
+    if faq_list:
+        try:
+            rebuild_embeddings()
+        except Exception as exc:
+            logger.exception("Unable to build FAQ embeddings during startup")
+            raise RuntimeError("Could not initialize FAQ embeddings. Check the Gemini API configuration.") from exc
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 @app.get("/faqs", response_model=List[FAQItem])
 def get_all_faqs():
     return faq_list
 
 
-@app.post("/faqs", response_model=FAQItem)
-def add_faq(item: FAQItem):
+@app.post("/faqs", response_model=FAQItem, dependencies=[Depends(require_admin)])
+def add_faq(payload: FAQPayload):
+    question = payload.question.strip()
+    answer = payload.answer.strip()
+    if not question or not answer:
+        raise HTTPException(status_code=400, detail="Question and answer are required.")
+
+    try:
+        embedding = embed_text(question)
+    except Exception as exc:
+        logger.exception("FAQ embedding failed")
+        raise HTTPException(status_code=503, detail="FAQ embedding service is unavailable.") from exc
+
+    new_id = max((item.id for item in faq_list), default=0) + 1
+    item = FAQItem(id=new_id, question=question, answer=answer)
     faq_list.append(item)
+    faq_embeddings.append(embedding)
     save_faqs()
-    faq_embeddings.append(embed_text(item.question))
     return item
 
 
+@app.put("/faqs/{faq_id}", response_model=FAQItem, dependencies=[Depends(require_admin)])
+def update_faq(faq_id: int, payload: FAQPayload):
+    question = payload.question.strip()
+    answer = payload.answer.strip()
+    if not question or not answer:
+        raise HTTPException(status_code=400, detail="Question and answer are required.")
+
+    for index, current in enumerate(faq_list):
+        if current.id == faq_id:
+            try:
+                embedding = embed_text(question)
+            except Exception as exc:
+                logger.exception("FAQ embedding failed")
+                raise HTTPException(status_code=503, detail="FAQ embedding service is unavailable.") from exc
+
+            updated = FAQItem(id=faq_id, question=question, answer=answer)
+            faq_list[index] = updated
+            if index < len(faq_embeddings):
+                faq_embeddings[index] = embedding
+            else:
+                rebuild_embeddings()
+            save_faqs()
+            return updated
+
+    raise HTTPException(status_code=404, detail="FAQ not found.")
+
+
+@app.delete("/faqs/{faq_id}", dependencies=[Depends(require_admin)])
+def delete_faq(faq_id: int):
+    for index, current in enumerate(faq_list):
+        if current.id == faq_id:
+            faq_list.pop(index)
+            if index < len(faq_embeddings):
+                faq_embeddings.pop(index)
+            else:
+                rebuild_embeddings()
+            save_faqs()
+            return {"deleted": True, "id": faq_id}
+
+    raise HTTPException(status_code=404, detail="FAQ not found.")
+
+
 @app.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest):
-    question = req.question.strip()
-
+def chat(request: ChatRequest):
+    question = request.question.strip()
     if not question:
-        raise HTTPException(status_code=400, detail="Empty question")
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
-    matches = semantic_search(question)
+    try:
+        matches = semantic_search(question)
+        faq_context = "\n\n".join(
+            f"Q: {item.question}\nA: {item.answer}" for item in matches
+        ) or "No matching FAQ was found."
 
-    if matches:
-        context = "\n".join([f"Q: {m.question}\nA: {m.answer}" for m in matches])
-    else:
-        context = "No similar FAQ found."
+        prompt = (
+            "Answer the student's question using only the college FAQ context below. "
+            "Do not invent official dates, fees, contacts, placement statistics or policies. "
+            "When the context does not contain the answer, say that the student should "
+            "verify it with the college office or official website.\n\n"
+            f"Student question: {question}\n\nFAQ context:\n{faq_context}"
+        )
+        response = client.models.generate_content(
+            model=CHAT_MODEL,
+            contents=prompt,
+        )
+    except Exception as exc:
+        logger.exception("Gemini request failed")
+        raise HTTPException(
+            status_code=503,
+            detail="The Gemini service is temporarily unavailable. Please try again.",
+        ) from exc
 
-    # Gemini chat
-    model = genai.GenerativeModel(CHAT_MODEL)
-    response = model.generate_content(
-        f"User question: {question}\n\nRelevant FAQ answers:\n{context}\n\nProvide the best possible answer:"
+    answer = getattr(response, "text", None) or (
+        "The AI provider did not return a text response. Please verify this information with the college office."
     )
-
-    answer = response.text if hasattr(response, "text") else "No response"
-
     return ChatResponse(answer=answer, top_faqs=matches)

@@ -1,6 +1,7 @@
 fastapi
-uvicorn
-openai
+uvicorn[standard]
+google-genai
 numpy
 streamlit
 requests
+python-dotenv
